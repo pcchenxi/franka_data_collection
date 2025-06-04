@@ -208,7 +208,7 @@ def find_next_target(current_trans, current_quat, trans_list, quat_list, trans_t
 
         # print('closest idx', closest_idx, 'dot product', np.dot(to_next, to_robot), 't_th', trans_threshold, t_error, 'q_th', quat_threshold, q_error)
         # Check if robot has passed the current point
-        if np.dot(to_next, to_robot) > 0.0005:
+        if np.dot(to_next, to_robot) > 0.001:
             # Move to the next point
             return closest_idx + 1
         elif t_error < trans_threshold*1 and q_error < quat_threshold*1:

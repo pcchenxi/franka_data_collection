@@ -57,7 +57,7 @@ if ARUCO_DICT.get(args["type"], None) is None:
 	print(f"ArUCo tag type '{args['type']}' is not supported")
 	sys.exit(0)
 
-selected_serial = "109622072337" # "315122271073" "109622072337" "419122270338"
+selected_serial = "419122270338" # "315122271073" "109622072337" "419122270338"
 pipeline = rs.pipeline()
 config = rs.config()
 config.enable_device(selected_serial)

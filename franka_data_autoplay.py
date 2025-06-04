@@ -61,8 +61,8 @@ def get_trajectory(path, idx=0, return_raw=False):
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
-    rospy.init_node("franka_data_generation")
-    rate = rospy.Rate(10)  # 10 Hz loop rate
+    # rospy.init_node("franka_data_generation")
+    # rate = rospy.Rate(10)  # 10 Hz loop rate
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--arm_name', default='left_arm', type=str)  # left_arm   right_arm
@@ -76,7 +76,10 @@ if __name__ == '__main__':
     parser.add_argument("--type", default='grasp', type=str) 
 
     args = parser.parse_args()
-    robot_traj_path = './dataset_hdf5/robot/' + args.type + '/' + args.arm_name + '/open/' + args.item_name
+    # robot_traj_path = './dataset_hdf5/robot/' + args.type + '/' + args.arm_name + '/open/' + args.item_name
+    # robot_traj_path = './dataset_hdf5/human/' + args.arm_name + '/' + args.item_name
+    # robot_traj_path = './dataset/human/grasp_init/' + args.arm_name + '/' + args.item_name
+    robot_traj_path = './dataset/human/full/' + args.arm_name + '/' + args.item_name
     support_start_path = './dataset_hdf5/support/' + args.arm_name + '/start/' + args.item_name
     support_open_path = './dataset_hdf5/support/' + args.arm_name + '/open/' + args.item_name
 
@@ -85,6 +88,7 @@ if __name__ == '__main__':
     # q_threshold = quaternion_distance_threshold(1)
 
     if args.mode == 'rgb':
+        base_idx = args.idx
         # arm.set_default_pose()
         # data = get_trajectory(robot_traj_path, sample_type='uniform', return_raw=True)
         data = get_trajectory(robot_traj_path, idx=args.idx, return_raw=True)
@@ -99,11 +103,34 @@ if __name__ == '__main__':
         # for frame in rgb_list:
         while True:
             frame = rgb_list[idx]
-            frame = cv2.resize(frame, (224, 224))
+            # frame = cv2.resize(frame, (224, 224))
             cv2.imshow('Align Example', frame)
             key = cv2.waitKey(0)
             # print(key)
-            if key == 81:  # Enter key
+            if key == 110:
+                base_idx = base_idx + 1
+                print('-- idx', base_idx)
+                data = get_trajectory(robot_traj_path, idx=base_idx, return_raw=True)
+                for keys in data:
+                    print(keys, len(data[keys]))
+
+                trans_list, quat_list, gripper_list = np.array(data['translation']), np.array(data['rotation']), np.array(data['gripper_w'])
+                rgb_list = np.array(data['rgb'])
+                len_list = len(rgb_list)
+                idx = 0
+            elif key == 112:
+                base_idx = base_idx - 1
+                print('-- idx', base_idx)
+                data = get_trajectory(robot_traj_path, idx=base_idx, return_raw=True)                
+
+                for keys in data:
+                    print(keys, len(data[keys]))
+
+                trans_list, quat_list, gripper_list = np.array(data['translation']), np.array(data['rotation']), np.array(data['gripper_w'])
+                rgb_list = np.array(data['rgb'])
+                len_list = len(rgb_list)
+                idx = 0
+            elif key == 81:  # Enter key
                 idx = max(0, idx-1)
             elif key == 83:
                 idx = min(len_list-1, idx+1)

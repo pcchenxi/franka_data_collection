@@ -8,7 +8,12 @@ import pyrealsense2 as rs
 from scipy.spatial.transform import Rotation
 from utils import ARUCO_DICT, aruco_display, get_center
 from franka_robot.franka_dual_arm import FrankaLeft, FrankaRight
-BASE_PATH = './dataset_hdf5/human/'
+# BASE_PATH = './dataset_hdf5/human/'
+# BASE_PATH = './dataset/human/grasp_init/'
+# BASE_PATH = './dataset/human/grasp_noise/'
+# BASE_PATH = './dataset/human/full' #全程，不带噪声
+BASE_PATH = './dataset/human/open_noise_full' #拉拉链过程中有噪声
+DROP_LAST_FRAME = 3
 data = {'rgb':[], 'depth':[], 'translation':[], 'rotation':[], 'gripper_w':[]}
 file_root = 'dataset_hdf5/human/junchen_record'
 support_path = 'dataset_hdf5/human/junchen_record'
@@ -109,12 +114,11 @@ def get_file_path(dir_path):
 
 def signal_handler(sig, frame):
     print('You pressed Ctrl+C!')
-    file_path = get_file_path(file_root)
-    with h5py.File(file_path, 'w') as hdf5_file:
-        for key, value in data.items():
-            hdf5_file.create_dataset(key, data=value)
-        print('----- save to', file_path, len(data['translation']))
-
+    # file_path = get_file_path(file_root)
+    # with h5py.File(file_path, 'w') as hdf5_file:
+    #     for key, value in data.items():
+    #         hdf5_file.create_dataset(key, data=value)
+    #     print('----- save to', file_path, len(data['translation']))
     sys.exit(0)
     
 def save_data(file_path):
@@ -122,6 +126,13 @@ def save_data(file_path):
     file_path = get_file_path(file_path)
     with h5py.File(file_path, 'w') as hdf5_file:
         for key, value in data.items():
+            # 删掉最后两帧
+            if args.drop_last_frame:
+                value = value[:-DROP_LAST_FRAME]
+                if args.start_trigger == 'close':
+                    value = value[DROP_LAST_FRAME*2:]# if recoding is triggered by close, drop the first two frames to ensure the gripper is closed
+                if args.start_trigger == 'key':
+                    value = value[1:]# if recoding is triggered by key, drop the first frame
             hdf5_file.create_dataset(key, data=value)
         print('----- save to', file_path, len(data['translation']))
     # clear data
@@ -129,7 +140,16 @@ def save_data(file_path):
         data[key] = []
     _loop = False
     print('Data saved to', file_path)
-
+def save_data_or(file_path):
+    print('Start Saving data')
+    file_path = get_file_path(file_path)
+    with h5py.File(file_path, 'w') as hdf5_file:
+        for key, value in data.items():
+            hdf5_file.create_dataset(key, data=value)
+        print('----- save to', file_path, len(data['translation']))
+    # clear data
+    _loop = False
+    print('Data saved to', file_path)
 def get_trajectory_by_idx(path, need_gripper = True, idx=-1):
     # take the last recorded trajectory
     f_list = os.listdir(path)
@@ -191,6 +211,8 @@ if __name__ == '__main__':
     parser.add_argument("--use_rgb", default=True, type=bool) 
     parser.add_argument('--mode', default='open_traj', type=str)#open_traj, play_traj, back_to_default
     parser.add_argument('--loop', default=False, type=bool)
+    parser.add_argument('--drop_last_frame', default=True, type=bool) # drop the last frame
+    parser.add_argument('--start_trigger', default='open', type=str) # open, close
     # if loop==True, will record next trajectory once the previous one is finished(still need to close-and-open the gripper to start recording)
     args = parser.parse_args()
     signal.signal(signal.SIGINT, signal_handler)
@@ -202,8 +224,8 @@ if __name__ == '__main__':
     _loop = True
     # robot related init
     if 'left' in args.name:
-        arm = FrankaLeft()
-        cam_id = '419122270338'
+        arm = FrankaLeft() 
+        cam_id = '315122271073'#'419122270338' # 315122271073
         # arm_shift = [0, -0.27, 0]
     else:
         arm = FrankaRight()
@@ -226,50 +248,66 @@ if __name__ == '__main__':
     # what we need to recored
     # data = {'rgb':[], 'depth':[], 'translation':[], 'rotation':[], 'gripper_w':[]}
     if args.mode == 'open_traj':
-            have_been_closed = False
-            start = False
-            while not rospy.is_shutdown() and _loop:
-                publish_static_tf(broadcaster)
-                try:
-                    if args.use_rgb:
-                        rgb, depth = get_RGBDframe(pipeline)
-                        if rgb is not None:
-                            gripper_state, marker_left, marker_right = get_gripper_state(rgb, detector, gripper_state, marker_left, marker_right)
-                            # was not recording and now gripper is open-> change signal
-                            if have_been_closed and gripper_state!=0.0:
-                                if not start:
-                                    close_cnt = 0
-                                    start = True
-                                    print('start recording')
-                                else:
-                                    start = False
-                                    print('stop recording')
-                                    save_data(human_traj_save_path)
+        have_been_closed = False
+        start = False
+        while not rospy.is_shutdown() and _loop:
+            publish_static_tf(broadcaster)
+            if args.use_rgb:
+                rgb, depth = get_RGBDframe(pipeline)
+                if rgb is not None:
+                    gripper_state, marker_left, marker_right = get_gripper_state(rgb, detector, gripper_state, marker_left, marker_right)
+                    # was not recording and now gripper is open-> change signal
+                    if args.start_trigger == "open":
+                        if have_been_closed and gripper_state!=0.0:
+                            if not start:
+                                start = True
+                                print('start recording')
+                            else:
+                                start = False
+                                print('stop recording')
+                                save_data(human_traj_save_path)
+                    elif args.start_trigger == "close" and have_been_closed:
+                        if gripper_state==0.0:
+                            start = True
+                            print('start recording')
+                        else:
+                            start = False
+                            print('stop recording')
+                            save_data(human_traj_save_path)
+                    elif have_been_closed: # if args.start_trigger == "key":
+                        if gripper_state==0.0:
+                            if not start:
+                                _ = input('press enter to start recording')
+                                start = True
+                                print('start recording')
+                        else:
+                            start = False
+                            print('stop recording')
+                            save_data(human_traj_save_path)
+                    have_been_closed = (gripper_state == 0.0) # record last gripper state, true means closed
+            try:
+                (human_trans, human_rot) = listener.lookupTransform('franka_base', '/vicon/franka_human/franka_human', rospy.Time(0))
+            
+                human_ee_rpy = Rotation.from_quat(human_rot).as_euler('xyz')
+                # print("human", human_trans, human_ee_rpy*180/np.pi)
+                if not start:
+                    continue
+                data['translation'].append(human_trans)
+                print(human_rot)
+                data['rotation'].append(human_rot)
+                data['gripper_w'].append(gripper_state)
+                if args.use_rgb:
+                    data['rgb'].append(rgb)
+                    data['depth'].append(depth*1)
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                rospy.logwarn("Failed to lookup transform from gripper_r to franka_base.")
 
-                            print(gripper_state)
-                            have_been_closed = gripper_state == 0.0 # record last gripper state, true means closed
 
-                    (human_trans, human_rot) = listener.lookupTransform('franka_base', '/vicon/franka_human/franka_human', rospy.Time(0))
-                    human_ee_rpy = Rotation.from_quat(human_rot).as_euler('xyz')
-                    # print("human", human_trans, human_ee_rpy*180/np.pi)
-                    if not start:
-                        continue
-                    data['translation'].append(human_trans)
-                    print(human_rot)
-                    data['rotation'].append(human_rot)
-                    data['gripper_w'].append(gripper_state)
-                    if args.use_rgb:
-                        data['rgb'].append(rgb)
-                        data['depth'].append(depth*1)
+            # do not use this two line
+            # arm.set_ee_pose(np.array(human_trans)+arm_shift, human_rot)
+            # arm.set_gripper_opening(gripper_state)
 
-                    # do not use this two line
-                    # arm.set_ee_pose(np.array(human_trans)+arm_shift, human_rot)
-                    # arm.set_gripper_opening(gripper_state)
-
-                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                    rospy.logwarn("Failed to lookup transform from gripper_r to franka_base.")
-
-                rate.sleep()
+            rate.sleep()
             
     if args.mode == "play_traj":
         arm.open_gripper()
@@ -279,6 +317,8 @@ if __name__ == '__main__':
         # start_trans, start_quat = start_trans[0], start_quat[0]
         
         for i in range(len(human_rot)):
+            if args.use_rgb:
+                _,_ = get_RGBDframe(pipeline)
             arm.set_ee_pose(np.array(human_trans[i]), human_rot[i], asynchronous=False)
             arm.set_gripper_opening(gripper_state[i])
             print('gripper:', gripper_state[i])

@@ -318,7 +318,7 @@ if __name__ == '__main__':
     parser.add_argument('--item_name', default='xiaomi', type=str)   # xiaomi, lv, ubag, ibag
     parser.add_argument("--use_rgb", default=True, type=bool) 
     parser.add_argument("--use_robot", default=True, type=bool) 
-    parser.add_argument("--mode", default='run_full', type=str) # run, run_seg
+    parser.add_argument("--mode", default='run_open', type=str) # run, run_seg
 
     args = parser.parse_args()
     robot_traj_path = './dataset_hdf5/robot/' + args.arm_name + '/open/' + args.item_name
@@ -369,31 +369,31 @@ if __name__ == '__main__':
             arm.open_gripper()
             tra_seg_grasp = run_grasp(arm, rs_pl, grasp_trans, grasp_quat, use_full, use_noise, d_threshod, q_threshold)
 
-            save_path = get_file_path(robot_traj_grasp_path)
-            with h5py.File(save_path, 'w') as hdf5_file:
-                for key, value in tra_seg_grasp.items():
-                    hdf5_file.create_dataset(key, data=value)
+            # save_path = get_file_path(robot_traj_grasp_path)
+            # with h5py.File(save_path, 'w') as hdf5_file:
+            #     for key, value in tra_seg_grasp.items():
+            #         hdf5_file.create_dataset(key, data=value)
 
             # --------------------------------------------------------------------------------------------
             # move to open
             tra_open = run_open(arm, rs_pl, use_full, use_noise, d_threshod, q_threshold)
             repeat_last(tra_open, num_repeat=5)
 
-            save_path = get_file_path(robot_traj_open_path)
-            with h5py.File(save_path, 'w') as hdf5_file:
-                for key, value in tra_open.items():
-                    hdf5_file.create_dataset(key, data=value)
-
-            # tra_full = {key: tra_seg_grasp[key] + tra_open[key] for key in tra_seg_grasp}
-            # repeat_last(tra_full, num_repeat=5)
-
-            # for keys in tra_full:
-            #     print(keys, len(tra_full[keys]))
-
-            # save_path = get_file_path(robot_traj_full_path)
+            # save_path = get_file_path(robot_traj_open_path)
             # with h5py.File(save_path, 'w') as hdf5_file:
-            #     for key, value in tra_full.items():
+            #     for key, value in tra_open.items():
             #         hdf5_file.create_dataset(key, data=value)
+
+            tra_full = {key: tra_seg_grasp[key] + tra_open[key] for key in tra_seg_grasp}
+            repeat_last(tra_full, num_repeat=5)
+
+            for keys in tra_full:
+                print(keys, len(tra_full[keys]))
+
+            save_path = get_file_path(robot_traj_full_path)
+            with h5py.File(save_path, 'w') as hdf5_file:
+                for key, value in tra_full.items():
+                    hdf5_file.create_dataset(key, data=value)
 
             # arm.close_gripper()
             play_close(arm, rate, d_threshod, q_threshold, support_close_path)
@@ -407,7 +407,7 @@ if __name__ == '__main__':
         arm.open_gripper()
         arm.set_default_pose()
         init_ee_trans, init_ee_quat, _ = arm.get_ee_pose()
-        for i in range(10):          
+        for i in range(40):          
             print('------------------------', i, '-----------------------------')
             arm.open_gripper()         
             if i %5 == 0:

@@ -74,8 +74,8 @@ class Franka:
         #     self.gripper.move_async(0.0, 0.03)
         # else:
         #     self.gripper.move(0.0, 0.03)
-        # success = self.gripper.move(0.05, 0.03)
-        self.gripper.grasp(0.0, 0.05, 20, epsilon_outer=1.0)
+        success = self.gripper.move(0.002, 0.03)
+        # self.gripper.grasp(0.0, 0.05, 20, epsilon_outer=1.0)
 
     def set_gripper_opening(self, width, asynchronous=True):
         current_width = self.gripper.width
