@@ -5,12 +5,10 @@ RIGHT_SHOULDER_SHIFT = np.array([-0.003, -0.3125, -0.005])
 class FrankaLeft(Franka):
     def __init__(self, robot_ip='192.168.31.11', relative_dynamics_factor=0.06):
         super(FrankaLeft, self).__init__(robot_ip, relative_dynamics_factor)
-        # self.pose_shift = [-0.007, 0.3125, 0]
-        # self.pose_shift = [0.0, 0.3125, 0]
         self.pose_shift = LEFT_SHOULDER_SHIFT
 
         start_joint_pose = np.array([0.03714000366948475, -1.0011939601582107, 0.012796065041415793, -1.9821447593672037, -0.3933088893534684, 1.855200764573804, 0.8445985249531525])
-        sup_joint_pose = np.array([0.03714000366948475, -1.0011939601582107, 0.012796065041415793, -1.9821447593672037, -0.3933088893534684, 1.855200764573804, 0.8445985249531525])
+        sup_joint_pose = np.array([0.2323472929627809, 0.16501024922001867, 0.08329819191839495, -1.561295524505366, -0.7199708017554436, 1.7323099317057986, 1.8030975948369037])
 
         self.start_joint_pose = start_joint_pose
         self.sup_joint_pose = sup_joint_pose
@@ -18,8 +16,6 @@ class FrankaLeft(Franka):
 class FrankaRight(Franka):
     def __init__(self, robot_ip='192.168.31.12', relative_dynamics_factor=0.06):
         super(FrankaRight, self).__init__(robot_ip, relative_dynamics_factor)
-        # self.pose_shift = [-0.01, -0.3125, 0]
-        # self.pose_shift = [0.0, -0.3125, 0]
         self.pose_shift = RIGHT_SHOULDER_SHIFT
 
         start_joint_pose = np.array([0.5166863674038985, -0.9506078305042858, -0.1274808768203859, -1.9297218054954717, 0.05532653038053947, 1.827222911086791, 0.8727408676298193])

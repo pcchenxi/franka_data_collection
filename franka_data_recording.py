@@ -4,9 +4,11 @@ import os, rospy, signal, argparse
 import tf, cv2, collections, h5py
 from scipy.spatial.transform import Rotation
 from utils import ARUCO_DICT, aruco_display, get_center
-from franka_robot.franka_dual_arm import FrankaLeft, FrankaRight
+# from franka_robot.franka_dual_arm import FrankaLeft, FrankaRight
 
 DROP_FRAME_NUM = 5
+LEFT_CAM_ID = '419122270338'#'419122270338' # 315122271073
+RIGHT_CAM_ID = '419122270338'#'419122270338' # 315122271073
 
 def publish_static_tf(broadcaster):
     """Publish a static transform from franka_table to franka_base."""
@@ -108,16 +110,13 @@ def get_file_path(dir_path):
 
     return file_path
 
-def init_devices(arm_name):
-    arm = None
-    if 'left' in arm_name:
+def init_devices(camera_name):
+    if 'left' in camera_name:
         # arm = FrankaLeft() 
-        cam_id = '419122270338'#'419122270338' # 315122271073
-        # arm_shift = [0, -0.27, 0]
+        cam_id = LEFT_CAM_ID
     else:
         # arm = FrankaRight()
-        cam_id = '419122270338'
-        # arm_shift = [0, -0.27, 0]
+        cam_id = RIGHT_CAM_ID
 
     # camera init
     pipeline = get_rl_pipeline(cam_id)
@@ -126,7 +125,7 @@ def init_devices(arm_name):
     arucoDict = cv2.aruco.getPredefinedDictionary(ARUCO_DICT['DICT_4X4_50'])
     arucoParams = cv2.aruco.DetectorParameters()
     detector = cv2.aruco.ArucoDetector(arucoDict, arucoParams)    
-    return arm, pipeline, detector
+    return pipeline, detector
     
 def save_data(file_path):
     file_path = get_file_path(file_path)
@@ -147,20 +146,19 @@ if __name__ == '__main__':
 
     # recording related init
     parser = argparse.ArgumentParser()
-    parser.add_argument('--arm', default='left_arm', type=str)    # Logging directory
-    parser.add_argument('--item_name', default='small_bag', type=str)    # Logging directory
-    parser.add_argument("--use_rgb", default=True, type=bool) 
-    parser.add_argument('--drop_last_frame', default=True, type=bool) # drop the last frame
-    parser.add_argument('--mode', default='open_traj', type=str)#open_traj, play_traj, back_to_default
+    parser.add_argument('--cam', default='left', type=str)    # Logging directory
+    parser.add_argument('--zip', default='left', type=str)    # Logging directory
+    parser.add_argument('--item', default='small_bag', type=str)    # Logging directory
+    # parser.add_argument('--mode', default='open_traj', type=str)#open_traj, play_traj, back_to_default
 
     parser.add_argument('--base_path', default='./paper_hdf5/human', type=str)    # Logging directory
     args = parser.parse_args()
 
-    human_traj_save_path = os.path.join(args.base_path, args.arm, args.item_name)
+    human_traj_save_path = os.path.join(args.base_path, args.zip, args.item)
     if not os.path.exists(human_traj_save_path):
         os.makedirs(human_traj_save_path)    
 
-    arm, pipeline, detector = init_devices(args.arm)
+    pipeline, detector = init_devices(args.cam)
 
     # main loop
     data = {'rgb':[], 'depth':[], 'translation':[], 'rotation':[], 'gripper_w':[]}
@@ -193,9 +191,6 @@ if __name__ == '__main__':
             ready = False
             print('start recording')
         elif event_tirgger and start: # trigger skip frame
-            # start = False
-            # ready = False
-            # event_list = collections.deque(maxlen=5)
             print('skip frame', len(data['gripper_w']))
             continue
         elif ready and not event_tirgger and start: # trigger stop recording
