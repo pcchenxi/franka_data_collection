@@ -1,7 +1,7 @@
+# from franka_robot.tora import TORA
 from scipy.spatial.transform import Rotation
 from franky import Robot, Gripper, Measure
-from franky import Affine, JointWaypointMotion, JointWaypoint, CartesianMotion, ReferenceType, CartesianPoseStopMotion, CartesianWaypointMotion, CartesianWaypoint
-# from franka_robot.tora import TORA
+from franky import Affine, JointWaypointMotion, JointWaypoint, CartesianMotion, ReferenceType, JointState, CartesianWaypointMotion, CartesianWaypoint
 import numpy as np
 
 class Franka:
@@ -12,8 +12,8 @@ class Franka:
 
         self.robot.relative_dynamics_factor = relative_dynamics_factor
         # self.robot.velocity_rel = 0.05
-        self.robot.acceleration_rel = 0.5
-        self.robot.jerk_rel = 0.5
+        # self.robot.acceleration_rel = 0.5
+        # self.robot.jerk_rel = 0.5
 
         self.relative_df = relative_dynamics_factor
 
@@ -32,12 +32,12 @@ class Franka:
 
         self.robot.recover_from_errors()
 
-    def set_soft(self, imp_value=150):
-        imp_value = imp_value
+    def set_soft(self):
+        imp_value = 150
         self.robot.set_joint_impedance([imp_value, imp_value, imp_value, imp_value, imp_value, imp_value, imp_value])
 
-    def set_hard(self, imp_value=1000):
-        imp_value = imp_value
+    def set_hard(self):
+        imp_value = 700
         self.robot.set_joint_impedance([imp_value, imp_value, imp_value, imp_value, imp_value, imp_value, imp_value])
 
     def speed_down(self):
@@ -47,20 +47,20 @@ class Franka:
         self.robot.relative_dynamics_factor = self.relative_df
 
     def set_default_pose(self):
-        self.robot.relative_dynamics_factor = 0.1
-        motion = CartesianMotion(Affine([-0.04, 0.0, 0.0]), ReferenceType.Relative)
-        self.robot.move(motion)    
+        # self.robot.relative_dynamics_factor = 0.05
+        # motion = CartesianMotion(Affine([-0.04, 0.0, 0.0]), ReferenceType.Relative)
+        # self.robot.move(motion)    
 
         robot_pose = self.robot.current_pose
         ee_trans = robot_pose.end_effector_pose.translation
         ee_quat = robot_pose.end_effector_pose.quaternion
         # motion = CartesianMotion(Affine(ee_trans+np.array([-0.05, 0.0, 0.1]), ee_quat))
         # self.robot.move(motion)
-        if ee_trans[0] > 0.5:
-            self.set_joint_pose(self.sup_joint_pose)
+        # if ee_trans[0] > 0.5:
+        self.set_joint_pose(self.sup_joint_pose)
 
         self.set_joint_pose(self.start_joint_pose)
-        self.robot.relative_dynamics_factor = self.relative_df
+        # self.robot.relative_dynamics_factor = self.relative_df
 
     def open_gripper(self, asynchronous=True):
         # if asynchronous:
@@ -74,7 +74,7 @@ class Franka:
         #     self.gripper.move_async(0.0, 0.03)
         # else:
         #     self.gripper.move(0.0, 0.03)
-        success = self.gripper.move(0.002, 0.03)
+        success = self.gripper.move(0.0, 0.01)
         # self.gripper.grasp(0.0, 0.05, 20, epsilon_outer=1.0)
 
     def set_gripper_opening(self, width, asynchronous=True):
@@ -89,7 +89,12 @@ class Franka:
 
         if abs(current_width - width) > 0.01:
             self.gripper.move(width, 0.03)
+            # self.gripper.move_async(width, 0.03)
         # success = self.gripper.move(0.0, 0.02)
+
+    def set_ee_pose_relative(self, translation, asynchronous=False):
+        motion = CartesianMotion(Affine(translation), ReferenceType.Relative)
+        self.robot.move(motion)    
 
     def set_ee_pose(self, translation, quaternion, asynchronous=True):
         # print('set ee')
@@ -97,42 +102,42 @@ class Franka:
         motion = CartesianMotion(Affine(shifted_translation, quaternion))
         self.robot.move(motion, asynchronous=asynchronous)
 
-    def set_ee_pose_relative(self, translation, asynchronous=False):
-        # shifted_translation = translation - self.pose_shift
-        motion = CartesianMotion(Affine(translation), ReferenceType.Relative)
-        self.robot.move(motion, asynchronous=asynchronous)
+    # def set_ee_pose(self, ee_trans, ee_quat, asynchronous=False):
+    #     target_ee_trans = ee_trans - self.pose_shift
+    #     target_ee_quat = ee_quat
+    #     current_ee_trans = self.robot.current_pose.end_effector_pose.translation
+    #     current_ee_quat = self.robot.current_pose.end_effector_pose.quaternion
+    #     joint_pose = self.robot.state.q
+    #     joint_v = self.robot.current_joint_velocities
 
-    def set_sora_pose(self, ee_trans, ee_quat, asynchronous=False):
-        target_ee_trans = ee_trans - self.pose_shift
-        target_ee_quat = ee_quat
-        current_ee_trans = self.robot.current_pose.end_effector_pose.translation
-        current_ee_quat = self.robot.current_pose.end_effector_pose.quaternion
-        joint_pose = self.robot.state.q
-        joint_v = self.robot.current_joint_velocities
-
-        target_joint, _, _ = self.tora.plan(joint_pose, joint_v, current_ee_trans, current_ee_quat, target_ee_trans, target_ee_quat)
-        # return target_joint
-        self.set_joint_pose(target_joint[-1], asynchronous=asynchronous)
+    #     target_joint, target_velocity, _ = self.tora.plan(joint_pose, joint_v, current_ee_trans, current_ee_quat, target_ee_trans, target_ee_quat)
+    #     # self.set_joint_trajectories(target_joint, target_velocity, asynchronous)
+    #     if asynchronous:
+    #         self.set_joint_pose(target_joint[5], asynchronous=asynchronous)
+    #     else:
+    #         self.set_joint_pose(target_joint[-1], asynchronous=asynchronous)
 
     def set_joint_pose(self, joint_pose, asynchronous=False):
         assert len(joint_pose) == 7
         m1 = JointWaypointMotion([JointWaypoint(joint_pose)])
         self.robot.move(m1, asynchronous=asynchronous)
 
-    def set_joint_trajectories(self, joint_trajectory, asynchronous=False):
+    def set_joint_trajectories(self, joint_trajectory, velocity_trajectory, asynchronous=False):
         waypoints = []
         if len(joint_trajectory) == 1:
             joint_trajectory = np.array([joint_trajectory])
 
-        print(joint_trajectory)
-        for i in range(len(joint_trajectory)):
-            js = joint_trajectory[i]
-            wpoint = JointWaypoint(js)
-            # wpoint = JointWaypoint(JointState(position=js, velocity=jv))
+        # print(joint_trajectory)
+        # for i in range(len(joint_trajectory)):
+        for js, jv in zip(joint_trajectory, velocity_trajectory):
+            # js = joint_trajectory[i]
+            # wpoint = JointWaypoint(js)
+            print(js, jv)
+            wpoint = JointWaypoint(JointState(position=js, velocity=jv*0.001))
             waypoints.append(wpoint)
         motion = JointWaypointMotion(waypoints)
         # m1 = JointWaypointMotion([JointWaypoint(joint_pose)])
-        self.robot.move(motion, asynchronous=asynchronous)
+        self.robot.move(motion, asynchronous=False)
 
     def get_ee_pose(self):
         robot_pose = self.robot.current_pose

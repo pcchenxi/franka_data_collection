@@ -5,9 +5,10 @@ import tf, cv2, collections, h5py
 from scipy.spatial.transform import Rotation
 from utils import ARUCO_DICT, aruco_display, get_center
 # from franka_robot.franka_dual_arm import FrankaLeft, FrankaRight
+from scipy.spatial.transform import Rotation as R
 
-DROP_FRAME_NUM = 5
-LEFT_CAM_ID = '419122270338'#'419122270338' # 315122271073
+DROP_FRAME_NUM = 10
+LEFT_CAM_ID = '315122271073'#'419122270338' # 315122271073
 RIGHT_CAM_ID = '419122270338'#'419122270338' # 315122271073
 
 def publish_static_tf(broadcaster):
@@ -136,6 +137,66 @@ def save_data(file_path):
             print(key, len(value))
         print('----- save to', file_path, len(data['translation']))
 
+
+def get_trajectory(path, idx=0):
+    # take the last recorded trajectory
+    f_list = os.listdir(path)
+    f_num = len(f_list)
+    f_idx = min(idx, f_num-1)
+    print('selected file id', f_idx, f_num-1)
+    file_path = path + '/' + str(f_idx) + '.h5'
+
+    data = h5py.File(file_path, 'r')
+    return data
+
+def get_data_list(traj_path, mode, idx):
+    data = get_trajectory(traj_path, idx=idx)
+    for keys in data:
+        print(keys, len(data[keys]))
+
+    trans_list, quat_list, gripper_list = np.array(data['translation']), np.array(data['rotation']), np.array(data['gripper_w'])
+    if mode == 'rgb':
+        img_list = np.array(data['rgb'])
+    elif mode == 'depth':
+        img_list = np.array(data['depth'])
+
+    return trans_list, quat_list, gripper_list, img_list
+
+def add_text(img, zip_pos):
+    # Text settings
+    text = zip_pos
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1
+    thickness = 2
+    color = (255, 0, 0)  # White
+
+    # Get text size
+    (text_width, text_height), baseline = cv2.getTextSize(text, font, font_scale, thickness)
+
+    # Calculate bottom-right position
+    x = img.shape[1] - text_width - 10  # 10 px from right
+    y = img.shape[0] - 10  # 10 px from bottom
+
+    # Put text
+    cv2.putText(img, text, (x, y), font, font_scale, color, thickness, cv2.LINE_AA)
+
+    # Show the result
+    cv2.imshow("Image with Bottom-Right Text", img)
+    cv2.waitKey(1)
+
+def get_euler_difference(quat1, quat2):
+    r1 = R.from_quat(quat1)
+    r2 = R.from_quat(quat2)
+
+    # Compute relative rotation: r_rel applied to quat1 gives quat2
+    r_rel = r2 * r1.inv()
+
+    angle_rad = r_rel.magnitude()
+    angle_deg = np.degrees(angle_rad)
+
+    return angle_deg 
+
+
 if __name__ == '__main__':
     # ros and system related init
     signal.signal(signal.SIGINT, signal_handler)
@@ -146,19 +207,23 @@ if __name__ == '__main__':
 
     # recording related init
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cam', default='left', type=str)    # Logging directory
-    parser.add_argument('--zip', default='left', type=str)    # Logging directory
-    parser.add_argument('--item', default='small_bag', type=str)    # Logging directory
-    # parser.add_argument('--mode', default='open_traj', type=str)#open_traj, play_traj, back_to_default
+    parser.add_argument('--arm', default='left', type=str)    # left, right        
+    parser.add_argument('--cam', default='cam_up', type=str)    # up, down        initial grassper position
+    parser.add_argument('--zip', default='zip_top', type=str)    # top, bottom     zipper position
+    parser.add_argument('--item', default='small_box', type=str)    # Logging directory
+    parser.add_argument('--data_mode', default='grasp', type=str) # grasp, open,  grasp_noise, open_noise
 
-    parser.add_argument('--base_path', default='./paper_hdf5/human', type=str)    # Logging directory
+    parser.add_argument('--base_path', default='./paper_hdf5_v4/human', type=str)    # Logging directory
     args = parser.parse_args()
 
-    human_traj_save_path = os.path.join(args.base_path, args.zip, args.item)
+    human_traj_save_path = os.path.join(args.base_path, args.data_mode, args.item, args.zip, args.cam)
     if not os.path.exists(human_traj_save_path):
         os.makedirs(human_traj_save_path)    
 
-    pipeline, detector = init_devices(args.cam)
+    pipeline, detector = init_devices(args.arm)
+    # reference_path = '/home/xi/xi_space/franka_manipulation/franka_data_clooection/paper_hdf5_v3/human/grasp/small_box/zip_top/cam_up'
+    # _, _, _, img_list = get_data_list(reference_path, mode='rgb', idx=0)
+    # reference_img = img_list[0]
 
     # main loop
     data = {'rgb':[], 'depth':[], 'translation':[], 'rotation':[], 'gripper_w':[]}
@@ -167,13 +232,16 @@ if __name__ == '__main__':
     gripper_state = 0.04 # open
     start, event_tirgger, ready = False, False, False
 
+    g_count = 0
+    pre_trans, pre_quat = None, None
+
     while not rospy.is_shutdown():
         publish_static_tf(broadcaster)
 
         rgb, depth = get_RGBDframe(pipeline)
         if rgb is None:
             continue
-    
+
         gripper_state, marker_left, marker_right, event = get_gripper_state(rgb, detector, gripper_state, marker_left, marker_right)
         try:
             (human_trans, human_rot) = listener.lookupTransform('franka_base', '/vicon/franka_human/franka_human', rospy.Time(0))
@@ -190,6 +258,18 @@ if __name__ == '__main__':
             start = True
             ready = False
             print('start recording')
+
+            if g_count % 2 == 0:
+                zip_pos = 'zip_bottom'
+            else:
+                zip_pos = 'zip_top'
+            human_traj_save_path = os.path.join(args.base_path, args.data_mode, args.item, zip_pos, args.cam)
+            if not os.path.exists(human_traj_save_path):
+                os.makedirs(human_traj_save_path)
+
+            add_text(rgb, zip_pos)
+
+            print('----------- current zip pose', zip_pos)
         elif event_tirgger and start: # trigger skip frame
             print('skip frame', len(data['gripper_w']))
             continue
@@ -200,12 +280,35 @@ if __name__ == '__main__':
 
             save_data(human_traj_save_path)
             data = {'rgb':[], 'depth':[], 'translation':[], 'rotation':[], 'gripper_w':[]}
+            g_count += 1
+            pre_trans, pre_quat = None, None
 
         if start:
+            if pre_trans is None:
+                pre_trans, pre_quat = human_trans, human_rot
+
+            trans_diff_pre = np.linalg.norm(np.array(human_trans) - np.array(pre_trans))
+            euler_diff_pre = get_euler_difference(human_rot, pre_quat)
+
+            if trans_diff_pre > 0.05 or euler_diff_pre > 15.0:
+                print('!!!!!!!!!!!!!!!!!!! skip frame jump', trans_diff_pre, euler_diff_pre)
+                continue
+
             data['translation'].append(human_trans)
             data['rotation'].append(human_rot)
             data['gripper_w'].append(gripper_state)
             data['rgb'].append(rgb)
             data['depth'].append(depth*1)
 
+            pre_trans, pre_quat = human_trans, human_rot
+
+
         rate.sleep()
+
+
+# cam_top
+# [0.36638517 0.30260678 0.57729757]
+# degree: [ 0.03939009  0.30290007 -1.27132275] [  2.25688617  17.35489556 -72.84142787]
+# quat [ 0.10522243  0.10982125 -0.58919091  0.79355   ]
+# Joints:  [-0.97788733, -1.04903993,  1.31520369, -1.58949637, -0.26875838,  1.36971498, 2.23423306]
+# Elbow:  ElbowState(joint_3_pos=1.3152, joint_4_flip=FlipDirection.Negative)
